@@ -156,18 +156,40 @@ def split_frontmatter(text: str):
             return data, body
         except Exception:
             pass
-    # 降级：逐行 key: value
+    # 降级：逐行 key: value，按缩进还原一层嵌套（够技能元数据用）
     data = {}
+    parent = None          # 当前一级键
+    child_indent = None    # 子层缩进量
     for line in raw.splitlines():
-        km = re.match(r"^([A-Za-z_][\w-]*):\s*(.*)$", line)
-        if km:
-            v = km.group(2).strip()
-            v = _unquote(v)
-            if v in ("true", "True"):
-                v = True
-            elif v in ("false", "False"):
-                v = False
-            data[km.group(1)] = v
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        km = re.match(r"^\s*([A-Za-z_][\w-]*):\s*(.*)$", line)
+        if not km:
+            continue
+        key, val = km.group(1), _unquote(km.group(2).strip())
+        if val in ("true", "True"):
+            val = True
+        elif val in ("false", "False"):
+            val = False
+
+        if indent == 0:
+            parent, child_indent = None, None
+            if val == "":
+                # 可能是嵌套块的开始
+                data[key] = {}
+                parent = key
+                child_indent = None
+            else:
+                data[key] = val
+        else:
+            if parent is None:
+                continue
+            if child_indent is None:
+                child_indent = indent
+            if indent >= child_indent:
+                if isinstance(data.get(parent), dict):
+                    data[parent][key] = val
     return data, body
 
 
